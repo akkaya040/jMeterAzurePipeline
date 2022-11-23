@@ -66,6 +66,7 @@ steps:
   inputs:
     sendMailConditionConfig: 'Always'
     subject: '[{environmentStatus}] {passPercentage} tests passed in $(Build.DefinitionName) stage for $(Build.BuildNumber)'
+    toAddress: 'akkaya-040-@hotmail.com'
     defaultDomain: 'office365.com'
     groupTestResultsBy: 'run'
     includeCommits: true
