@@ -1,0 +1,76 @@
+# Starter pipeline
+
+#schedules:
+#- cron: "0 3 * * *"
+#  displayName: Daily Automation Test Run
+#  branches:
+#    include:
+#    - main
+#  always: true
+
+trigger:
+- none
+
+#pool:
+#  vmImage: 'windows-latest'
+#  vmImage: 'ubuntu-late'
+pool:
+  name: hosted-agents
+  demands:
+   - agent.name -equals test-linux-machine
+#This is your hosted agent which is your azure agent instaled local machine 
+
+variables:
+  testName: 'Mobile.Test'
+
+steps:
+
+- task: CmdLine@2
+  displayName: Jmeter Test Run
+  inputs:
+    script: '/home/akkaya040/apache-jmeter-5.4.1/bin/jmeter -n -t $(System.DefaultWorkingDirectory)/$(testName).jmx -l reports/results.jtl -e -o reports'
+
+- task: PythonScript@0
+  displayName: Convert Jtl Report To Xml Report
+  inputs:
+    scriptSource: 'filePath'
+    scriptPath: '$(System.DefaultWorkingDirectory)/jtl_junit_converter.py'
+    arguments: '$(System.DefaultWorkingDirectory)/reports/results.jtl $(System.DefaultWorkingDirectory)/reports/result.xml'
+
+- task: PublishTestResults@2
+  displayName: 'Publish Test Results'
+  inputs:
+    testResultsFiles: '**/result*.xml'
+
+- task: publishhtmlreport@1
+  inputs:
+    htmlType: 'Jmeter'
+    JmeterReportsPath: '$(Build.SourcesDirectory)/reports'
+
+- task: PublishReleaseArtifact@1
+  inputs:
+    artifactPath: '$(System.DefaultWorkingDirectory)/'
+
+- task: CmdLine@2
+  inputs:
+    script: |
+      # Fix Email Report Problem
+      
+      cd /home/akkaya040/myagent/_work/_tasks/EmailReport_36fd41b1-8024-4ce9-a5a0-53c3e54ed105/1.1.8
+      cp ./index.js ./Index.js
+      
+      sed -i -e "s~\\\\\\\\~/~" ./htmlreport/HTMLReportCreator.js
+      sed -i -e "s~\\\\\\\\~/~" ./model/helpers/LinkHelper.js
+
+- task: EmailReport@1
+  inputs:
+    sendMailConditionConfig: 'Always'
+    subject: '[{environmentStatus}] {passPercentage} tests passed in $(Build.DefinitionName) stage for $(Build.BuildNumber)'
+    defaultDomain: 'office365.com'
+    groupTestResultsBy: 'run'
+    includeCommits: true
+    maxTestFailuresToShow: '15'
+    includeOthersInTotal: false
+    usePreviousEnvironment: false
+    enableTLS: true
+    smtpConnectionEndpoint: 'SmtpConnectionForEmailForV2'
