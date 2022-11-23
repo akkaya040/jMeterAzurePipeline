@@ -1,0 +1,91 @@
+
+trigger:
+- none
+
+pool:
+  vmImage: ubuntu-latest
+#  vmImage: windows-latest
+
+steps:
+
+- task: JMeterInstaller@0
+  displayName: Install Jmeter 5.4.1
+  inputs:
+    jmeterVersion: '5.4.1'
+    plugins: 'jpgc-casutg,jpgc-dummy,jpgc-ffw,jpgc-fifo,jpgc-functions,jpgc-json,jpgc-perfmon,jpgc-prmctl,jpgc-tst,jmeter.backendlistener.azure'
+
+
+#Bu task için windows makinaya geçilirse eğer jdbc driveri
+#Jmeter'in kurulu olduğu yere taşınacak şekilde konfigüre edilmelidir.
+#Mevcut repo içinden azure içerisindeki ayağa kalkan pod'a taşır
+- task: CmdLine@2
+  displayName: Install Jdbc Driver Into Jmeter in Ubuntu Machine 
+  inputs:
+    script: |
+      echo "------jmeter----------"
+      cp utils/mssql-jdbc-9.4.0.jre8.jar /rootPath/jmeter-*/5.4.1/x64/apache-jmeter-5.4.1/lib/
+      echo "------jmeter----------"
+      cp utils/mssql-jdbc-9.4.0.jre8.jar /rootPath/jmeter-*/5.4.1/x64/apache-jmeter-5.4.1/lib/ext/
+      echo "------jmeter----------"
+      cd /rootPath/jmeter-*/5.4.1/x64/apache-jmeter-5.4.1/lib/
+      echo "------jmeter----------"
+      ls
+      echo "------jmeter----------"
+
+
+- task: CmdLine@2
+  displayName: Jmeter Test Run
+  inputs:
+    script: 'jmeter -n -t $(System.DefaultWorkingDirectory)/azureSampleTest.jmx -l reports/results.jtl -e -o reports'
+
+- task: PythonScript@0
+  displayName: Convert Jtl Report To Xml Report
+  inputs:
+    scriptSource: 'filePath'
+    scriptPath: '$(System.DefaultWorkingDirectory)/jtl_junit_converter.py'
+    arguments: '$(System.DefaultWorkingDirectory)/reports/results.jtl $(System.DefaultWorkingDirectory)/reports/result.xml'
+
+- task: PublishTestResults@2
+  displayName: Publishing Test Results
+  inputs:
+    testResultsFormat: 'JUnit'
+    testResultsFiles: '**/result*.xml'
+    searchFolder: '$(System.DefaultWorkingDirectory)/reports/'
+    testRunTitle: 'Jmeter API Test Run'
+
+- task: publishhtmlreport@1
+  displayName: Publishing Html Report
+  inputs:
+    htmlType: 'Jmeter'
+    JmeterReportsPath: '$(System.DefaultWorkingDirectory)/reports'
+
+
+- task: PublishReleaseArtifact@1
+  displayName: Archiving Reports And Logs
+  inputs:
+    artifactPath: '$(System.DefaultWorkingDirectory)/reports/'
+
+- task: Bash@3
+  displayName: Fixing Mailing Task
+  inputs:
+    targetType: 'inline'
+    script: |
+      cd /home/vsts/work/_tasks/EmailReport_36fd41b1-8024-4ce9-a5a0-53c3e54ed105/1.1.8
+      cp ./index.js ./Index.js
+      sed -i -e "s~\\\\\\\\~/~" ./htmlreport/HTMLReportCreator.js
+      sed -i -e "s~\\\\\\\\~/~" ./model/helpers/LinkHelper.js
+
+- task: EmailReport@1
+  displayName: Report Is Sending To akkaya040@gmail.com
+  inputs:
+    sendMailConditionConfig: 'Always'
+    subject: '--Test Result-- [{environmentStatus}] {passPercentage} tests passed in $(Release.EnvironmentName) stage for $(Build.BuildNumber)'
+    includeInToSectionStr: 
+    toAddress: 'akkaya040@gmail.com'
+    defaultDomain: 'mail.google.com'
+    groupTestResultsBy: 'run'
+    includeCommits: true
+    maxTestFailuresToShow: '15'
+    includeOthersInTotal: false
+    usePreviousEnvironment: false
+    smtpConnectionEndpoint: 'GoogleSmtpConnectionForEmailSend'
